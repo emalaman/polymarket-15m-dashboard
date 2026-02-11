@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📊 Polymarket 15M - BTC/ETH</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', sans-serif; }
+    .card { background: #121212; border: 1px solid #333; border-radius: 0.75rem; padding: 1.5rem; transition: transform .2s; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.4); border-color: #2563eb; }
+    .badge { font-size: .75rem; padding: .25rem .75rem; border-radius: 999px; font-weight: 700; text-transform: uppercase; }
+    .badge-buy { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .badge-sell { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .badge-hold { background: rgba(156, 163, 175, 0.2); color: #9ca3af; }
+    .metric-value { font-size: 2.5rem; font-weight: 800; }
+    .metric-label { color: #9ca3af; font-size: .875rem; text-transform: uppercase; letter-spacing: .05em; }
+    .text-green { color: #22c55e; }
+    .text-red { color: #ef4444; }
+    .text-yellow { color: #fbbf24; }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .refresh-indicator { position: fixed; top: 1rem; right: 1rem; font-size: .75rem; color: #6b7280; background: rgba(0,0,0,.5); padding: .25rem .75rem; border-radius: .5rem; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+  <div class="max-w-6xl mx-auto">
+    <header class="mb-10 text-center">
+      <h1 class="text-4xl font-bold text-white mb-2">📊 Polymarket 15M Dashboard</h1>
+      <p class="text-gray-400 text-lg">Mercados de 15 minutos - Bitcoin & Ethereum</p>
+      <div class="refresh-indicator" id="last-update">Atualizando...</div>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8" id="cards">
+      <!-- Cards serão gerados via JS -->
+    </div>
+
+    <div class="card">
+      <h2 class="text-xl font-bold text-white mb-4">📋 Lista Completa</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-gray-800 text-gray-400 text-sm">
+              <th class="py-3 px-4">Mercado</th>
+              <th class="py-3 px-4 text-right">YES</th>
+              <th class="py-3 px-4 text-right">NO</th>
+              <th class="py-3 px-4 text-right">Sinal</th>
+              <th class="py-3 px-4 text-right">Duração</th>
+              <th class="py-3 px-4">Link</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer class="mt-8 text-center text-gray-500 text-sm border-t border-gray-800 pt-4">
+      <p>Dados da Gamma API (pública). Atualização automática a cada 30s.</p>
+    </footer>
+  </div>
+
+  <script>
+    const API_URL = 'https://gamma-api.polymarket.com/markets';
+    
+    // Filtro de eventos de 15min (no Gamma API, não há tag específica)
+    // Vamos detectar pela descrição ou pela duração total (startDate até endDate)
+    function is15MinMarket(market) {
+      const text = (market.question + ' ' + (market.description || '') + ' ' + (market.events?.[0]?.slug || '')).toLowerCase();
+      
+      // Palavras-chave 15min
+      const has15Min = /\b15\s*(?:min|minute|m)\b|\b15M\b/.test(text);
+      
+      // Se não tem "15" explícito, verifica duração total (approximada)
+      // Mercados de 15min duram ~15-30min no total
+      let durationHours = 0;
+      if (market.startDateIso && market.endDateIso) {
+        const start = new Date(market.startDateIso).getTime();
+        const end = new Date(market.endDateIso).getTime();
+        durationHours = (end - start) / (1000 * 60 * 60);
+      } else if (market.startDate && market.endDate) {
+        const start = new Date(market.startDate).getTime();
+        const end = new Date(market.endDate).getTime();
+        durationHours = (end - start) / (1000 * 60 * 60);
+      }
+      
+      const isShort = durationHours > 0 && durationHours <= 1; // <=1 hora
+      
+      return has15Min || isShort;
+    }
+    
+    function isCryptoBTCEth(market) {
+      const text = (market.question + ' ' + (market.description || '') + ' ' + (market.events?.[0]?.slug || '')).toLowerCase();
+      // Excluir times de esporte (Colorado Avalanche)
+      const sportsTeams = /\b(colorado avalanche|los angeles lakers|new york knicks|chicago bulls|boston celtics|golden state warriors|dallas mavericks|houston rockets|san antonio spurs|phoenix suns|miami heat|orlando magic|atlanta hawks|cleveland cavaliers|oklahoma city thunder|milwaukee bucks|toronto raptors|indiana pacers|minnesota timberwolves|detroit pistons|charlotte hornets|washington wizards|brooklyn nets|sacramento kings|memphis grizzlies|utah jazz|new orleans pelicans)\b/;
+      if (sportsTeams.test(text)) return false;
+      
+      const isBTC = /\b(bitcoin|btc)\b/.test(text);
+      const isETH = /\b(ethereum|eth)\b/.test(text);
+      return isBTC || isETH;
+    }
+    
+    function parsePrices(market) {
+      let prices = market.outcomePrices;
+      if (typeof prices === 'string') {
+        try { prices = JSON.parse(prices); } catch (e) { return null; }
+      }
+      if (!prices || prices.length < 2) return null;
+      return { yes: parseFloat(prices[0]), no: parseFloat(prices[1]) };
+    }
+    
+    function suggestAction(price) {
+      if (price < 0.40) return { label: '🔥 COMPRA FORTE', class: 'badge-buy' };
+      if (price > 0.60) return { label: '⚠️ VENDA/EVITAR', class: 'badge-sell' };
+      return { label: '⏳ AGUARDAR', class: 'badge-hold' };
+    }
+    
+    function timeLeftDays(endDateIso) {
+      if (!endDateIso) return '';
+      const end = new Date(endDateIso).getTime();
+      const now = Date.now();
+      const diff = end - now;
+      if (diff <= 0) return 'Expirado';
+      const days = Math.ceil(diff / (1000*60*60*24));
+      return `${days}d`;
+    }
+    
+    function formatPrice(p) {
+      if (p === null || p === undefined) return 'N/A';
+      return p.toFixed(3);
+    }
+    
+    function marketUrl(market) {
+      const id = market.id || market.marketId;
+      return `https://polymarket.com/market/${id}`;
+    }
+    
+    async function fetchMarkets() {
+      try {
+        const res = await fetch(API_URL + '?active=true&closed=false&limit=500');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        let data = JSON.parse(text);
+        const markets = Array.isArray(data) ? data : (data.markets || data.data || []);
+        return markets.filter(m => m.active !== false && m.closed !== true);
+      } catch (e) {
+        console.error('Fetch error:', e);
+        return [];
+      }
+    }
+    
+    function renderDashboard(markets) {
+      // Filter: crypto BTC/ETH AND 15min style
+      const targets = markets.filter(m => isCryptoBTCEth(m) && is15MinMarket(m));
+      const cardsContainer = document.getElementById('cards');
+      const tableBody = document.getElementById('table-body');
+      
+      if (targets.length === 0) {
+        cardsContainer.innerHTML = `
+          <div class="card col-span-1 md:col-span-2 text-center text-gray-400">
+            Nenhum mercado de 15min de BTC/ETH encontrado no momento.
+          </div>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-500">Nenhum dado</td></tr>`;
+        return;
+      }
+      
+      // Cards (max 2)
+      const displayMarkets = targets.slice(0, 2);
+      cardsContainer.innerHTML = displayMarkets.map(m => {
+        const prices = parsePrices(m) || { yes: null, no: null };
+        const yes = prices.yes;
+        const no = prices.no;
+        const suggestion = yes ? suggestAction(yes) : { label: 'N/A', class: 'badge-hold' };
+        const question = m.question || 'Sem título';
+        const duration = (() => {
+          let h = 0;
+          if (m.startDateIso && m.endDateIso) {
+            const s = new Date(m.startDateIso).getTime();
+            const e = new Date(m.endDateIso).getTime();
+            h = Math.round((e-s)/(1000*60*60));
+          }
+          return h ? `${h}h` : 'N/A';
+        })();
+        
+        return `
+          <div class="card">
+            <div class="flex justify-between items-start mb-4">
+              <h3 class="text-lg font-bold text-white flex-1 mr-2">${question}</h3>
+              <span class="badge ${suggestion.class}">${suggestion.label}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <div class="text-gray-400 text-xs uppercase">YES</div>
+                <div class="metric-value ${yes < 0.5 ? 'text-green' : yes > 0.5 ? 'text-red' : ''}">${formatPrice(yes)}</div>
+              </div>
+              <div>
+                <div class="text-gray-400 text-xs uppercase">NO</div>
+                <div class="metric-value ${no < 0.5 ? 'text-green' : no > 0.5 ? 'text-red' : ''}">${formatPrice(no)}</div>
+              </div>
+            </div>
+            <div class="text-xs text-gray-400 flex gap-4 mb-4">
+              <span>Duração: <span class="text-white">${duration}</span></span>
+              <span>Fim: <span class="text-white">${timeLeftDays(m.endDateIso || m.endDate)}</span></span>
+            </div>
+            <a href="${marketUrl(m)}" target="_blank" class="block w-full text-center py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition">Abrir no Polymarket</a>
+          </div>
+        `;
+      }).join('');
+      
+      // Table
+      tableBody.innerHTML = targets.map(m => {
+        const prices = parsePrices(m) || { yes: null, no: null };
+        const yes = prices.yes;
+        const suggestion = yes ? suggestAction(yes) : { label: 'N/A', class: 'badge-hold' };
+        const question = m.question || 'Sem título';
+        const duration = (() => {
+          let h = 0;
+          if (m.startDateIso && m.endDateIso) {
+            const s = new Date(m.startDateIso).getTime();
+            const e = new Date(m.endDateIso).getTime();
+            h = Math.round((e-s)/(1000*60*60));
+          }
+          return h ? `${h}h` : 'N/A';
+        })();
+        
+        return `
+          <tr class="border-b border-gray-800 hover:bg-gray-900">
+            <td class="py-3 px-4 text-white max-w-md">${question}</td>
+            <td class="py-3 px-4 text-right font-mono">${formatPrice(yes)}</td>
+            <td class="py-3 px-4 text-right font-mono">${formatPrice(prices.no)}</td>
+            <td class="py-3 px-4 text-right"><span class="badge ${suggestion.class}">${suggestion.label}</span></td>
+            <td class="py-3 px-4 text-center text-gray-400">${duration}</td>
+            <td class="py-3 px-4"><a href="${marketUrl(m)}" target="_blank" class="text-blue-400 hover:underline">Abrir</a></td>
+          </tr>
+        `;
+      }).join('');
+      
+      // Update last update time
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString('pt-BR');
+    }
+    
+    async function run() {
+      const markets = await fetchMarkets();
+      renderDashboard(markets);
+    }
+    
+    // Initial load
+    run();
+    // Refresh every 30s
+    setInterval(run, 30000);
+  </script>
+</body>
+</html>

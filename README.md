@@ -1,141 +1,96 @@
 # 📊 Polymarket 15M Dashboard
 
-Dashboard Streamlit para monitorar mercados de 15 minutos de Bitcoin e Ethereum na Polymarket via API CLOB.
+Dashboard estático (HTML/JS) para monitorar mercados de **15 minutos** de Bitcoin e Ethereum usando a **Gamma API pública**.
 
-**Live Demo:** (Deploy no Streamlit Community Cloud ou seu próprio servidor)
-
----
-
-## ✨ Funcionalidades
-
-- 🔗 Conexão direta com **CLOB API** do Polymarket
-- ⏱️ **Auto-atualização** a cada 30 segundos
-- 🎯 Filtro automático para mercados **15min de BTC e ETH**
-- 📈 Preços **YES/NO** em tempo real
-- 💡 **Sinal de trading**: COMPRA se YES < 0.40, VENDA/EVITAR se YES > 0.60
-- 🚨 Alertas visuais com cores
-- 🔗 Links diretos para o Polymarket
+**Live Demo:** https://emalaman.github.io/polymarket-15m-dashboard/
 
 ---
 
-## 🛠️ Stack
+## ✨ Características
 
-- **Frontend**: Streamlit
-- **Backend**: py-clob-client
-- **Deploy**: Streamlit Community Cloud (recomendado) ou VPS
-
----
-
-## 🚀 Quick Start
-
-### Local
-
-```bash
-# Clone e instale
-cd polymarket-15m-dashboard
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-
-# Configure secrets
-cp .env.example .env
-# Edite .env com suas credenciais CLOB
-
-# Rode
-streamlit run app.py
-```
-
-Acesse: http://localhost:8501
+- 🔍 **Filtro automático** por BTC/ETH + 15min (detecta por texto e duração)
+- 📈 **Preços YES/NO** em tempo real
+- 💡 **Sinal de trading**:
+  - 🔥 **COMPRA FORTE** se YES < 0.40
+  - ⏳ **AGUARDAR** entre 0.40 e 0.60
+  - ⚠️ **VENDA/EVITAR** se YES > 0.60
+- 🔄 **Auto-atualização** a cada 30 segundos
+- 🚀 **100% estático** - roda no GitHub Pages (sem backend)
+- 📱 **Responsivo** - mobile-friendly
 
 ---
 
-## ☁️ Deploy no Streamlit Community Cloud
+## 🛠️ Tecnologia
 
-1. Faça push deste repositório para o GitHub
-2. Vá em https://share.streamlit.io/
-3. Clique em "New app"
-4. Selecione o repo e branch `main`
-5. Em **Secrets**, adicione:
-   - `POLYMARKET_API_KEY`
-   - `POLYMARKET_API_SECRET`
-   - `POLYMARKET_API_PASSPHRASE`
-6. Clique em **Deploy!**
+- HTML5 + Vanilla JavaScript
+- Tailwind CSS (via CDN)
+- Gamma API pública (sem autenticação)
 
 ---
 
-## 🔐 Configurando Credenciais CLOB
+## 🚀 Deploy (GitHub Pages)
 
-Para obter as credenciais:
+1. **Crie um repositório** no GitHub (público)
+2. **Copie** este `index.html` para o repo
+3. **Ative o Pages**: Settings → Pages → Source: `Deploy from a branch` → branch `main` → folder `/ (root)`
+4. Acesse: `https://seuuser.github.io/repo-name/`
 
-1. Acesse https://polymarket.com/
-2. Vá em **Settings** → **API**
-3. Crie uma nova chave API com permissão de leitura (`read:markets`)
-4. Copie a **API Key**, **Secret** e **Passphrase**
-5. Adicione como **GitHub Secrets** (se usar GitHub Actions) ou no `.env` (local)
-
----
-
-## ⚙️ Como Funciona
-
-1. **Conecta** à CLOB API (`https://clob.polymarket.com`)
-2. **Busca** todos os mercados ativos (`client.get_markets()`)
-3. **Filtra** por texto contendo "bitcoin/btc" ou "ethereum/eth" + "15 min"
-4. **Extrai** preços YES/NO de cada mercado
-5. **Calcula** sugestão de compra/venda baseada no preço YES:
-   - `< 0.40`: 🔥 COMPRA FORTE
-   - `0.40 - 0.60`: ⏳ AGUARDAR
-   - `> 0.60`: ⚠️ VENDA/EVITAR
-6. **Atualiza** a interface a cada 30 segundos
+Done! Não precisa de segredos nem servidor.
 
 ---
 
-## 📦 Estrutura do Projeto
+## 🔍 Como Funciona
 
-```
-polymarket-15m-dashboard/
-├── app.py              # Código principal Streamlit
-├── requirements.txt    # Dependências Python
-├── .github/workflows/ci.yml  # CI (teste de importação)
-├── .env.example        # Template para variáveis de ambiente
-├── .gitignore
-└── README.md
-```
-
----
-
-## ⚠️ Rate Limits & Considerações
-
-- CLOB API rate limits: ~100 requests/min
-- Atualização a cada 30s é segura
-- Não进行 negociações automáticas (apenas leitura)
-- Mercados de 15min podem aparecer/desaparecer rapidamente
+1. **Busca** mercados ativos da Gamma API: `https://gamma-api.polymarket.com/markets?active=true&closed=false&limit=500`
+2. **Filtra** por:
+   - Conter "bitcoin/btc" ou "ethereum/eth" no texto
+   - Excluir times de esporte (blacklist)
+   - Ter duração total <= 1 hora OU conter "15 min" no texto
+3. **Extrai** preços YES/NO de `outcomePrices`
+4. **Gera** sinal baseado no preço YES
+5. **Atualiza** a cada 30s
 
 ---
 
-## 🐛 Troubleshooting
+## 📊 Status Atual
 
-| Problema | Solução |
-|----------|---------|
-| `API Key invalid` | Verifique se copiou corretamente; recrie a chave |
-| `ModuleNotFoundError` | Rode `pip install -r requirements.txt` |
-| Mercados não aparecem | Não há mercados de 15min ativos no momento |
-| Loop infinito no Streamlit | Use `@st.cache_data` e `time.sleep(30)` como no exemplo |
+**Mercados encontrados** (exemplo):
+- `Will bitcoin hit $1m before GTA VI?` (duration ~1y) - NÃO é 15min
+- (Nenhum mercado de 15min detectado no momento)
 
----
-
-## 🔄 Customização
-
-- **Intervalo de atualização**: ajuste `time.sleep(30)` no final do loop
-- **Sinal de trading**: modifique a função `suggest_action(price)`
-- **Filtro de tempo**: adicione `market['duration']` se disponível
-- **Layout**: mude `st.columns()` para `st.tabs()` ou outro
+*A Gamma API pode não retornar os mercados `/crypto/15M` da página do Polymarket. Se não houver eventos de 15min, o dashboard mostrará "Nenhum mercado encontrado".*
 
 ---
 
-## 📝 License
+## 🐛 Problemas Conhecidos
 
-MIT
+1. **Filtro de 15min**: A Gamma API não tem tag de duração. Detectamos por duração calculada (startDate → endDate) ou pela string "15min". Se o Polymarket usar outro formato, pode não pegar.
+2. **Rate limits**: Gamma API tem limite público (~60 req/min). Atualização a cada 30s é segura.
+3. **Dados atrasados**: A API pode ter delay de alguns segundos.
+
+---
+
+## 🔧 Customização
+
+- **Intervalo de atualização**: altere `setInterval(run, 30000)` (ms)
+- **Limites do sinal**: modifique `suggestAction(price)` (atual: <0.40 compra, >0.60 venda)
+- **Filtro de duração**: ajuste `is15MinMarket()` (atual: <=1 hora)
+- **Cores/tema**: edite o CSS no `<style>` do cabeçalho
+
+---
+
+## 📝 Notas
+
+- **Sem API Key** - usa endpoint público Gamma
+- **Não realiza trades** - apenas exibe dados
+- **Funciona offline?** Não, precisa buscar dados da API
+- **GitHub Pages** - hospedagem gratuita estática
+
+---
+
+## 🤔 Por que não usar CLOB?
+
+A API CLOB requer autenticação completa (key+secret+passphrase) para leitura de mercados. Como você só tem a API_KEY (pública), a Gamma API é a alternativa. Ela não filtra por duração, então usamos heurísticas.
 
 ---
 
